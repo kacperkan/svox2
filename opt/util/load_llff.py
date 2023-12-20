@@ -3,17 +3,21 @@
 # With minor modifications from NeX
 # https://github.com/nex-mpi/nex-code
 
-import numpy as np
 import os
-import imageio
 
-def get_image_size(path : str):
+import imageio
+import numpy as np
+
+
+def get_image_size(path: str):
     """
     Get image size without loading it
     """
     from PIL import Image
+
     im = Image.open(path)
-    return im.size[1], im.size[0]    # H, W
+    return im.size[1], im.size[0]  # H, W
+
 
 def _minify(basedir, factors=[], resolutions=[]):
     needtoload = False
@@ -60,7 +64,14 @@ def _minify(basedir, factors=[], resolutions=[]):
 
         ext = imgs[0].split(".")[-1]
         args = " ".join(
-            ["mogrify", "-resize", resizearg, "-format", "png", "*.{}".format(ext)]
+            [
+                "mogrify",
+                "-resize",
+                resizearg,
+                "-format",
+                "png",
+                "*.{}".format(ext),
+            ]
         )
         print(args)
         os.chdir(imgdir)
@@ -201,7 +212,9 @@ def render_path_spiral(c2w, up, rads, focal, zrate, rots, N):
     for theta in np.linspace(0.0, 2.0 * np.pi * rots, N + 1)[:-1]:
         c = np.dot(
             c2w[:3, :4],
-            np.array([np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.0])
+            np.array(
+                [np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.0]
+            )
             * rads,
         )
         z = normalize(c - np.dot(c2w[:3, :4], np.array([0, 0, -focal, 1.0])))
@@ -228,7 +241,13 @@ def recenter_poses(poses):
 
 def spherify_poses(poses, bds):
     p34_to_44 = lambda p: np.concatenate(
-        [p, np.tile(np.reshape(np.eye(4)[-1, :], [1, 1, 4]), [p.shape[0], 1, 1])], 1
+        [
+            p,
+            np.tile(
+                np.reshape(np.eye(4)[-1, :], [1, 1, 4]), [p.shape[0], 1, 1]
+            ),
+        ],
+        1,
     )
 
     rays_d = poses[:, :3, 2:3]
@@ -238,7 +257,8 @@ def spherify_poses(poses, bds):
         A_i = np.eye(3) - rays_d * np.transpose(rays_d, [0, 2, 1])
         b_i = -A_i @ rays_o
         pt_mindist = np.squeeze(
-            -np.linalg.inv((np.transpose(A_i, [0, 2, 1]) @ A_i).mean(0)) @ (b_i).mean(0)
+            -np.linalg.inv((np.transpose(A_i, [0, 2, 1]) @ A_i).mean(0))
+            @ (b_i).mean(0)
         )
         return pt_mindist
 
@@ -253,7 +273,9 @@ def spherify_poses(poses, bds):
     pos = center
     c2w = np.stack([vec1, vec2, vec0, pos], 1)
 
-    poses_reset = np.linalg.inv(p34_to_44(c2w[None])) @ p34_to_44(poses[:, :3, :4])
+    poses_reset = np.linalg.inv(p34_to_44(c2w[None])) @ p34_to_44(
+        poses[:, :3, :4]
+    )
 
     rad = np.sqrt(np.mean(np.sum(np.square(poses_reset[:, :3, 3]), -1)))
 
@@ -264,11 +286,13 @@ def spherify_poses(poses, bds):
 
     centroid = np.mean(poses_reset[:, :3, 3], 0)
     zh = centroid[2]
-    radcircle = np.sqrt(rad ** 2 - zh ** 2)
+    radcircle = np.sqrt(rad**2 - zh**2)
     new_poses = []
 
     for th in np.linspace(0.0, 2.0 * np.pi, 120):
-        camorigin = np.array([radcircle * np.cos(th), radcircle * np.sin(th), zh])
+        camorigin = np.array(
+            [radcircle * np.cos(th), radcircle * np.sin(th), zh]
+        )
         up = np.array([0, 0, -1.0])
 
         vec2 = normalize(camorigin)
@@ -282,7 +306,11 @@ def spherify_poses(poses, bds):
     new_poses = np.stack(new_poses, 0)
 
     new_poses = np.concatenate(
-        [new_poses, np.broadcast_to(poses[0, :3, -1:], new_poses[:, :3, -1:].shape)], -1
+        [
+            new_poses,
+            np.broadcast_to(poses[0, :3, -1:], new_poses[:, :3, -1:].shape),
+        ],
+        -1,
     )
     poses_reset = np.concatenate(
         [
@@ -305,7 +333,6 @@ def load_llff_data(
     split_train_val=8,
     render_style="",
 ):
-
     # poses, bds, imgs = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
     poses, bds, intrinsic = _load_data(
         basedir, factor=factor, load_imgs=False
@@ -315,7 +342,9 @@ def load_llff_data(
 
     # Correct rotation matrix ordering and move variable dim to axis 0
     # poses [R | T] [3, 4, images]
-    poses = np.concatenate([poses[:, 1:2, :], -poses[:, 0:1, :], poses[:, 2:, :]], 1)
+    poses = np.concatenate(
+        [poses[:, 1:2, :], -poses[:, 0:1, :], poses[:, 2:, :]], 1
+    )
     # poses [3, 4, images] --> [images, 3, 4]
     poses = np.moveaxis(poses, -1, 0).astype(np.float32)
 
@@ -407,10 +436,4 @@ def load_llff_data(
     reference_depth = train_bds[reference_view_id]
     print(reference_depth)
 
-    return (
-        reference_depth,
-        reference_view_id,
-        render_poses,
-        poses,
-        intrinsic
-    )
+    return (reference_depth, reference_view_id, render_poses, poses, intrinsic)

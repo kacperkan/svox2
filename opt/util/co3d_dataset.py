@@ -3,20 +3,21 @@
 #
 # Adapted from basenerf
 # Copyright 2021 Alex Yu
+import gzip
+import json
+import os
+from os import path
+from typing import List, NamedTuple, Optional, Union
+
+import cv2
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-import os
-import cv2
-from tqdm import tqdm
-from os import path
-import json
-import gzip
-
 from scipy.spatial.transform import Rotation
-from typing import NamedTuple, Optional, List, Union
-from .util import Rays, Intrin, similarity_from_cameras
+from tqdm import tqdm
+
 from .dataset_base import DatasetBase
+from .util import Intrin, Rays, similarity_from_cameras
 
 
 class CO3DDataset(DatasetBase):
@@ -30,8 +31,8 @@ class CO3DDataset(DatasetBase):
         self,
         root,
         split,
-        seq_id : Optional[int] = None,
-        epoch_size : Optional[int] = None,
+        seq_id: Optional[int] = None,
+        epoch_size: Optional[int] = None,
         permutation: bool = True,
         device: Union[str, torch.device] = "cpu",
         max_image_dim: int = 800,
@@ -45,8 +46,8 @@ class CO3DDataset(DatasetBase):
         :param device: data prefetch device
         """
         super().__init__()
-        os.makedirs('co3d_tmp', exist_ok=True)
-        index_file = path.join('co3d_tmp', 'co3d_index.npz')
+        os.makedirs("co3d_tmp", exist_ok=True)
+        index_file = path.join("co3d_tmp", "co3d_index.npz")
         self.split = split
         self.permutation = permutation
         self.data_dir = root
@@ -55,17 +56,18 @@ class CO3DDataset(DatasetBase):
         self.max_pose_dist = max_pose_dist
         self.cam_scale_factor = cam_scale_factor
 
-        self.cats = sorted([x for x in os.listdir(root) if path.isdir(
-            path.join(root, x))])
+        self.cats = sorted(
+            [x for x in os.listdir(root) if path.isdir(path.join(root, x))]
+        )
         self.gt = []
         self.n_images = 0
         self.curr_offset = 0
         self.next_offset = 0
         self.hold_every = hold_every
-        self.curr_seq_cat = self.curr_seq_name = ''
+        self.curr_seq_cat = self.curr_seq_name = ""
         self.device = device
         if path.exists(index_file):
-            print(' Using cached CO3D index', index_file)
+            print(" Using cached CO3D index", index_file)
             z = np.load(index_file)
             self.seq_cats = z.f.seq_cats
             self.seq_names = z.f.seq_names
@@ -76,7 +78,9 @@ class CO3DDataset(DatasetBase):
             self.fxy = z.f.fxy
             self.cxy = z.f.cxy
         else:
-            print(' Constructing CO3D index (1st run only), this may take a while')
+            print(
+                " Constructing CO3D index (1st run only), this may take a while"
+            )
             cam_trans = np.diag(np.array([-1, -1, 1, 1], dtype=np.float32))
             frame_data_by_seq = {}
             self.seq_cats = []
@@ -88,26 +92,26 @@ class CO3DDataset(DatasetBase):
             self.fxy = []
             self.cxy = []
             for i, cat in enumerate(self.cats):
-                print(cat, '- category', i + 1, 'of', len(self.cats))
+                print(cat, "- category", i + 1, "of", len(self.cats))
                 cat_dir = path.join(root, cat)
                 if not path.isdir(cat_dir):
                     continue
-                frame_data_path = path.join(cat_dir, 'frame_annotations.jgz')
-                with gzip.open(frame_data_path, 'r') as f:
+                frame_data_path = path.join(cat_dir, "frame_annotations.jgz")
+                with gzip.open(frame_data_path, "r") as f:
                     all_frames_data = json.load(f)
                 for frame_data in tqdm(all_frames_data):
-                    seq_name = cat + '//' + frame_data['sequence_name']
+                    seq_name = cat + "//" + frame_data["sequence_name"]
                     #  frame_number = frame_data['frame_number']
                     if seq_name not in frame_data_by_seq:
                         frame_data_by_seq[seq_name] = []
                     pose = np.zeros((4, 4))
-                    image_size_hw = frame_data['image']['size']  # H, W
+                    image_size_hw = frame_data["image"]["size"]  # H, W
                     H, W = image_size_hw
                     half_wh = np.array([W * 0.5, H * 0.5], dtype=np.float32)
-                    R = np.array(frame_data['viewpoint']['R'])
-                    T = np.array(frame_data['viewpoint']['T'])
-                    fxy = np.array(frame_data['viewpoint']['focal_length'])
-                    cxy = np.array(frame_data['viewpoint']['principal_point'])
+                    R = np.array(frame_data["viewpoint"]["R"])
+                    T = np.array(frame_data["viewpoint"]["T"])
+                    fxy = np.array(frame_data["viewpoint"]["focal_length"])
+                    cxy = np.array(frame_data["viewpoint"]["principal_point"])
                     focal = fxy * half_wh
                     prp = -1.0 * (cxy - 1.0) * half_wh
                     pose[:3, :3] = R
@@ -115,62 +119,63 @@ class CO3DDataset(DatasetBase):
                     pose[3, 3] = 1.0
                     pose = pose @ cam_trans
                     frame_data_obj = {
-                        'frame_number':frame_data['frame_number'],
-                        'image_path':frame_data['image']['path'],
-                        'image_size':np.array([W, H]),  # NOTE: this is w, h
-                        'pose':pose,
-                        'fxy':focal, # NOTE: this is x, y
-                        'cxy':prp,   # NOTE: this is x, y
+                        "frame_number": frame_data["frame_number"],
+                        "image_path": frame_data["image"]["path"],
+                        "image_size": np.array([W, H]),  # NOTE: this is w, h
+                        "pose": pose,
+                        "fxy": focal,  # NOTE: this is x, y
+                        "cxy": prp,  # NOTE: this is x, y
                     }
                     frame_data_by_seq[seq_name].append(frame_data_obj)
-            print(' Sorting by sequence')
+            print(" Sorting by sequence")
             for k in frame_data_by_seq:
-                fd = sorted(frame_data_by_seq[k],
-                        key=lambda x: x['frame_number'])
-                spl = k.split('//')
+                fd = sorted(
+                    frame_data_by_seq[k], key=lambda x: x["frame_number"]
+                )
+                spl = k.split("//")
                 self.seq_cats.append(spl[0])
                 self.seq_names.append(spl[1])
                 self.seq_offsets.append(len(self.image_path))
-                self.image_path.extend([x['image_path'] for x in fd])
-                self.all_image_size.extend([x['image_size'] for x in fd])
-                self.image_pose.extend([x['pose'] for x in fd])
-                self.fxy.extend([x['fxy'] for x in fd])
-                self.cxy.extend([x['cxy'] for x in fd])
+                self.image_path.extend([x["image_path"] for x in fd])
+                self.all_image_size.extend([x["image_size"] for x in fd])
+                self.image_pose.extend([x["pose"] for x in fd])
+                self.fxy.extend([x["fxy"] for x in fd])
+                self.cxy.extend([x["cxy"] for x in fd])
             self.all_image_size = np.stack(self.all_image_size)
             self.image_pose = np.stack(self.image_pose)
             self.fxy = np.stack(self.fxy)
             self.cxy = np.stack(self.cxy)
             self.seq_offsets.append(len(self.image_path))
             self.seq_offsets = np.array(self.seq_offsets)
-            print(' Saving to index')
-            np.savez(index_file,
-                    seq_cats=self.seq_cats,
-                    seq_names=self.seq_names,
-                    seq_offsets=self.seq_offsets,
-                    image_size=self.all_image_size,
-                    image_path=self.image_path,
-                    pose=self.image_pose,
-                    fxy=self.fxy,
-                    cxy=self.cxy)
+            print(" Saving to index")
+            np.savez(
+                index_file,
+                seq_cats=self.seq_cats,
+                seq_names=self.seq_names,
+                seq_offsets=self.seq_offsets,
+                image_size=self.all_image_size,
+                image_path=self.image_path,
+                pose=self.image_pose,
+                fxy=self.fxy,
+                cxy=self.cxy,
+            )
         self.n_seq = len(self.seq_names)
-        print(
-            " Loaded CO3D dataset",
-            root,
-            "n_seq", self.n_seq
-        )
+        print(" Loaded CO3D dataset", root, "n_seq", self.n_seq)
 
         if seq_id is not None:
             self.load_sequence(seq_id)
 
-
-    def load_sequence(self, sequence_id : int):
+    def load_sequence(self, sequence_id: int):
         """
         Load a different CO3D sequence
         sequence_id should be at least 0 and at most (n_seq - 1)
         see co3d_tmp/co3d.txt for sequence ID -> name mappings
         """
-        print('  Loading single CO3D sequence:',
-                self.seq_cats[sequence_id], self.seq_names[sequence_id])
+        print(
+            "  Loading single CO3D sequence:",
+            self.seq_cats[sequence_id],
+            self.seq_names[sequence_id],
+        )
         self.curr_seq_cat = self.seq_cats[sequence_id]
         self.curr_seq_name = self.seq_names[sequence_id]
         self.curr_offset = self.seq_offsets[sequence_id]
@@ -183,7 +188,7 @@ class CO3DDataset(DatasetBase):
         for i in tqdm(range(self.curr_offset, self.next_offset)):
             is_train = i % self.hold_every != 0
             ref_c2ws.append(self.image_pose[i])
-            if self.split.endswith('train') != is_train:
+            if self.split.endswith("train") != is_train:
                 continue
             im = cv2.imread(path.join(self.data_dir, self.image_path[i]))
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
@@ -220,7 +225,9 @@ class CO3DDataset(DatasetBase):
         cys = torch.tensor(cys)
 
         # Filter out crazy poses
-        dists = np.linalg.norm(c2w[:, :3, 3] - np.median(c2w[:, :3, 3], axis=0), axis=-1)
+        dists = np.linalg.norm(
+            c2w[:, :3, 3] - np.median(c2w[:, :3, 3], axis=0), axis=-1
+        )
         med = np.median(dists)
         good_mask = dists < med * self.max_pose_dist
         c2w = c2w[good_mask]
@@ -228,8 +235,9 @@ class CO3DDataset(DatasetBase):
         good_idx = np.where(good_mask)[0]
         self.gt = [self.gt[i] for i in good_idx]
 
-        self.intrins_full = Intrin(fxs[good_mask], fys[good_mask],
-                cxs[good_mask], cys[good_mask])
+        self.intrins_full = Intrin(
+            fxs[good_mask], fys[good_mask], cxs[good_mask], cys[good_mask]
+        )
 
         # Normalize
         #  c2w[:, :3, 3] -= np.mean(c2w[:, :3, 3], axis=0)
@@ -249,8 +257,7 @@ class CO3DDataset(DatasetBase):
             self.gen_rays(factor=1)
         else:
             # Rays are not needed for testing
-            self.intrins : Intrin = self.intrins_full
-
+            self.intrins: Intrin = self.intrins_full
 
     def gen_rays(self, factor=1):
         print(" Generating rays, scaling factor", factor)
@@ -268,8 +275,8 @@ class CO3DDataset(DatasetBase):
                 torch.arange(self.image_size[i, 0], dtype=torch.float32) + 0.5,
                 torch.arange(self.image_size[i, 1], dtype=torch.float32) + 0.5,
             )
-            xx = (xx - self.intrins.get('cx', i)) / self.intrins.get('fx', i)
-            yy = (yy - self.intrins.get('cy', i)) / self.intrins.get('fy', i)
+            xx = (xx - self.intrins.get("cx", i)) / self.intrins.get("fx", i)
+            yy = (yy - self.intrins.get("cy", i)) / self.intrins.get("fy", i)
             zz = torch.ones_like(xx)
             dirs = torch.stack((xx, yy, zz), dim=-1)  # OpenCV convention
             dirs /= torch.norm(dirs, dim=-1, keepdim=True)
@@ -279,15 +286,18 @@ class CO3DDataset(DatasetBase):
 
             if factor != 1:
                 gt = F.interpolate(
-                    self.gt[i].permute([2, 0, 1])[None], size=(self.image_size[i, 0],
-                        self.image_size[i, 1]),
-                    mode="area"
+                    self.gt[i].permute([2, 0, 1])[None],
+                    size=(self.image_size[i, 0], self.image_size[i, 1]),
+                    mode="area",
                 )[0].permute([1, 2, 0])
                 gt = gt.reshape(-1, 3)
             else:
                 gt = self.gt[i].reshape(-1, 3)
-            origins = self.c2w[i, None, :3, 3].expand(self.image_size[i, 0] *
-                    self.image_size[i, 1], -1).contiguous()
+            origins = (
+                self.c2w[i, None, :3, 3]
+                .expand(self.image_size[i, 0] * self.image_size[i, 1], -1)
+                .contiguous()
+            )
             all_origins.append(origins)
             all_dirs.append(dirs)
             all_gts.append(gt)

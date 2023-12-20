@@ -1,6 +1,7 @@
 import torch
 import torch.cuda
 
+
 class Timing:
     def __init__(self, name):
         self.name = name
@@ -13,4 +14,4 @@ class Timing:
     def __exit__(self, type, value, traceback):
         self.end.record()
         torch.cuda.synchronize()
-        print(self.name, 'elapsed', self.start.elapsed_time(self.end), 'ms')
+        print(self.name, "elapsed", self.start.elapsed_time(self.end), "ms")

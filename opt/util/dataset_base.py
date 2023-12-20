@@ -1,7 +1,10 @@
+from typing import List, Optional, Union
+
 import torch
 import torch.nn.functional as F
-from typing import Union, Optional, List
-from .util import select_or_shuffle_rays, Rays, Intrin
+
+from .util import Intrin, Rays, select_or_shuffle_rays
+
 
 class DatasetBase:
     split: str
@@ -12,13 +15,13 @@ class DatasetBase:
     w_full: int
     intrins_full: Intrin
     c2w: torch.Tensor  # C2W OpenCV poses
-    gt: Union[torch.Tensor, List[torch.Tensor]]   # RGB images
-    device : Union[str, torch.device]
+    gt: Union[torch.Tensor, List[torch.Tensor]]  # RGB images
+    device: Union[str, torch.device]
 
     def __init__(self):
         self.ndc_coeffs = (-1, -1)
         self.use_sphere_bound = False
-        self.should_use_background = True # a hint
+        self.should_use_background = True  # a hint
         self.use_sphere_bound = True
         self.scene_center = [0.0, 0.0, 0.0]
         self.scene_radius = [1.0, 1.0, 1.0]
@@ -30,8 +33,9 @@ class DatasetBase:
         """
         if self.split == "train":
             del self.rays
-            self.rays = select_or_shuffle_rays(self.rays_init, self.permutation,
-                                               self.epoch_size, self.device)
+            self.rays = select_or_shuffle_rays(
+                self.rays_init, self.permutation, self.epoch_size, self.device
+            )
 
     def gen_rays(self, factor=1):
         print(" Generating rays, scaling factor", factor)
@@ -56,12 +60,18 @@ class DatasetBase:
 
         if factor != 1:
             gt = F.interpolate(
-                self.gt.permute([0, 3, 1, 2]), size=(self.h, self.w), mode="area"
+                self.gt.permute([0, 3, 1, 2]),
+                size=(self.h, self.w),
+                mode="area",
             ).permute([0, 2, 3, 1])
             gt = gt.reshape(self.n_images, -1, 3)
         else:
             gt = self.gt.reshape(self.n_images, -1, 3)
-        origins = self.c2w[:, None, :3, 3].expand(-1, self.h * self.w, -1).contiguous()
+        origins = (
+            self.c2w[:, None, :3, 3]
+            .expand(-1, self.h * self.w, -1)
+            .contiguous()
+        )
         if self.split == "train":
             origins = origins.view(-1, 3)
             dirs = dirs.view(-1, 3)
@@ -70,9 +80,9 @@ class DatasetBase:
         self.rays_init = Rays(origins=origins, dirs=dirs, gt=gt)
         self.rays = self.rays_init
 
-    def get_image_size(self, i : int):
+    def get_image_size(self, i: int):
         # H, W
-        if hasattr(self, 'image_size'):
+        if hasattr(self, "image_size"):
             return tuple(self.image_size[i])
         else:
             return self.h, self.w

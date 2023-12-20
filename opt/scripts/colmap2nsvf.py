@@ -47,19 +47,23 @@ the images will be resized dynamically on load.
 
 The code to parse the COLMAP sparse bin files is from LLFF.
 """
+import argparse
+import collections
+
 # Copyright 2021 Alex Yu
 import os
 import os.path as osp
-import numpy as np
-import struct
-import collections
-import argparse
 import shutil
+import struct
+
+import numpy as np
 
 CameraModel = collections.namedtuple(
     "CameraModel", ["model_id", "model_name", "num_params"]
 )
-Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
+Camera = collections.namedtuple(
+    "Camera", ["id", "model", "width", "height", "params"]
+)
 BaseImage = collections.namedtuple(
     "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
 )
@@ -113,7 +117,9 @@ CAMERA_MODEL_IDS = dict(
 )
 
 
-def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
+def read_next_bytes(
+    fid, num_bytes, format_char_sequence, endian_character="<"
+):
     """Read and unpack the next bytes from a binary file.
     :param fid:
     :param num_bytes: Sum of combination of {2, 4, 8}, e.g. 2, 6, 16, 30, etc.
@@ -137,13 +143,17 @@ def read_colmap_sparse(sparse_path):
             camera_id = camera_properties[0]
             model_id = camera_properties[1]
             model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
-            assert model_name in ["SIMPLE_PINHOLE", "SIMPLE_RADIAL"], \
-                   "Only SIMPLE_PINHOLE/SIMPLE_RADIAL supported"
+            assert model_name in [
+                "SIMPLE_PINHOLE",
+                "SIMPLE_RADIAL",
+            ], "Only SIMPLE_PINHOLE/SIMPLE_RADIAL supported"
             width = camera_properties[2]
             height = camera_properties[3]
             num_params = CAMERA_MODEL_IDS[model_id].num_params
             params = read_next_bytes(
-                fid, num_bytes=8 * num_params, format_char_sequence="d" * num_params
+                fid,
+                num_bytes=8 * num_params,
+                format_char_sequence="d" * num_params,
             )
             cameras.append(
                 Camera(
@@ -168,9 +178,9 @@ def read_colmap_sparse(sparse_path):
             xyz = np.array(binary_point_line_properties[1:4])
             rgb = np.array(binary_point_line_properties[4:7])
             error = np.array(binary_point_line_properties[7])
-            track_length = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[
-                0
-            ]
+            track_length = read_next_bytes(
+                fid, num_bytes=8, format_char_sequence="Q"
+            )[0]
             track_elems = read_next_bytes(
                 fid,
                 num_bytes=8 * track_length,
@@ -204,16 +214,19 @@ def read_colmap_sparse(sparse_path):
             while current_char != b"\x00":  # look for the ASCII 0 entry
                 image_name += current_char.decode("utf-8")
                 current_char = read_next_bytes(fid, 1, "c")[0]
-            num_points2D = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[
-                0
-            ]
+            num_points2D = read_next_bytes(
+                fid, num_bytes=8, format_char_sequence="Q"
+            )[0]
             x_y_id_s = read_next_bytes(
                 fid,
                 num_bytes=24 * num_points2D,
                 format_char_sequence="ddq" * num_points2D,
             )
             xys = np.column_stack(
-                [tuple(map(float, x_y_id_s[0::3])), tuple(map(float, x_y_id_s[1::3]))]
+                [
+                    tuple(map(float, x_y_id_s[0::3])),
+                    tuple(map(float, x_y_id_s[1::3])),
+                ]
             )
             point3D_ids = list(map(int, x_y_id_s[2::3]))
             point3D_ids = [points3D_idmap[x] for x in point3D_ids if x >= 0]
@@ -277,16 +290,18 @@ def main():
     if args.sparse_dir.endswith("/"):
         args.sparse_dir = args.sparse_dir[:-1]
     base_dir = osp.dirname(osp.dirname(args.sparse_dir))
-    pose_dir = osp.join(base_dir, "pose_colmap" if args.colmap_suffix else "pose")
+    pose_dir = osp.join(
+        base_dir, "pose_colmap" if args.colmap_suffix else "pose"
+    )
     feat_dir = osp.join(base_dir, "feature")
     base_scale_file = osp.join(base_dir, "base_scale.txt")
     if osp.exists(base_scale_file):
-        with open(base_scale_file, 'r') as f:
+        with open(base_scale_file, "r") as f:
             base_scale = float(f.read())
-        print('base_scale', base_scale)
+        print("base_scale", base_scale)
     else:
         base_scale = 1.0
-        print('base_scale defaulted to', base_scale)
+        print("base_scale defaulted to", base_scale)
     print("BASE_DIR", base_dir)
     print("POSE_DIR", pose_dir)
     print("FEATURE_DIR", feat_dir)
@@ -298,7 +313,9 @@ def main():
             import click
 
             nonlocal overwrite
-            if overwrite or click.confirm(f"Directory {dirname} exists, overwrite?"):
+            if overwrite or click.confirm(
+                f"Directory {dirname} exists, overwrite?"
+            ):
                 if not args.overwrite_no_del:
                     shutil.rmtree(dirname)
                 overwrite = True
@@ -320,14 +337,22 @@ def main():
     K[0, 2] = cameras[0].params[1] / base_scale
     K[1, 2] = cameras[0].params[2] / base_scale
     print("f", K[0, 0], "c", K[0:2, 2])
-    np.savetxt(osp.join(base_dir, "intrinsics_colmap.txt" if args.colmap_suffix else "intrinsics.txt"), K)
+    np.savetxt(
+        osp.join(
+            base_dir,
+            "intrinsics_colmap.txt"
+            if args.colmap_suffix
+            else "intrinsics.txt",
+        ),
+        K,
+    )
     del K
 
     print("Get world scaling")
     points = np.stack([p.xyz for p in points3D])
     cen = np.median(points, axis=0)
     points -= cen
-    dists = (points ** 2).sum(axis=1)
+    dists = (points**2).sum(axis=1)
 
     # FIXME: Questionable autoscaling. Adopt method from Noah Snavely
     meddist = np.median(dists)
@@ -358,7 +383,9 @@ def main():
 
         imfile_name = osp.splitext(osp.basename(im.name))[0]
         pose_path = osp.join(pose_dir, imfile_name + ".txt")
-        feat_path = osp.join(feat_dir, imfile_name + ".npz")  # NOT USED but maybe nice?
+        feat_path = osp.join(
+            feat_dir, imfile_name + ".npz"
+        )  # NOT USED but maybe nice?
         np.savetxt(pose_path, c2w)
         np.savez(feat_path, xys=xys, ids=point3d_ids)
     print(" Total cameras:", len(imdata))

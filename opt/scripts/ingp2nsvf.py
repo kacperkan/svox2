@@ -2,16 +2,17 @@
 Convert NeRF-iNGP data to NSVF
 python ingp2nsvf.py <ngp_data_dir> <our_data_dir>
 """
+import argparse
+import json
 import os
 import shutil
 from glob import glob
-import json
 
 import numpy as np
 from PIL import Image
-import argparse
 
-def convert(data_dir : str, out_data_dir : str):
+
+def convert(data_dir: str, out_data_dir: str):
     """
     Convert Instant-NGP (modified NeRF) data to NSVF
 
@@ -80,11 +81,17 @@ def convert(data_dir : str, out_data_dir : str):
             if not os.path.isfile(fpath):
                 # Legacy path (NeRF)
                 fpath = os.path.join(
-                    data_dir, tj_subdir, os.path.basename(frame["file_path"]) + ".png"
+                    data_dir,
+                    tj_subdir,
+                    os.path.basename(frame["file_path"]) + ".png",
                 )
             example_fpath = fpath
             if not os.path.isfile(fpath):
-                print("Could not find image:", frame["file_path"], "(this may be ok)")
+                print(
+                    "Could not find image:",
+                    frame["file_path"],
+                    "(this may be ok)",
+                )
                 continue
 
             ext = os.path.splitext(fpath)[1]
@@ -123,12 +130,14 @@ def convert(data_dir : str, out_data_dir : str):
     cx = tj.get("cx", w * 0.5)
     cy = tj.get("cy", h * 0.5)
 
-    intrin_mtx = np.array([
-        [fx, 0.0, cx, 0.0],
-        [0.0, fy, cy, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ])
+    intrin_mtx = np.array(
+        [
+            [fx, 0.0, cx, 0.0],
+            [0.0, fy, cy, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
     # Write intrinsics
     np.savetxt(os.path.join(out_data_dir, "intrinsics.txt"), intrin_mtx)
 
@@ -136,6 +145,8 @@ def convert(data_dir : str, out_data_dir : str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("data_dir", type=str, help="NeRF-NGP data directory")
-    parser.add_argument("out_data_dir", type=str, help="Output NSVF data directory")
+    parser.add_argument(
+        "out_data_dir", type=str, help="Output NSVF data directory"
+    )
     args = parser.parse_args()
     convert(args.data_dir, args.out_data_dir)
