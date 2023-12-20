@@ -5,3 +5,6 @@ Session.vim
 ckpt/
 svox2.egg-info
 .vscode
+.eggs
+build
+*.so
